@@ -21,3 +21,5 @@ storage/**
 !storage/.gitkeep
 
 *.tsbuildinfo
+
+/DB_INIT_STATE/

@@ -52,3 +52,77 @@ main{width:100%;overflow-x:clip}
   .section-title{align-items:flex-start}
   footer{gap:12px;flex-wrap:wrap}
 }
+
+/* School catalog grouped by island, qualification and year */
+.exam-catalog{display:flex;flex-direction:column;gap:28px;min-width:0}
+.island-block,.qualification-block,.year-block{min-width:0}
+.island-block-heading{display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:12px;background:#e8f0ff;border:1px solid #d7e3f8;color:#183a68}
+.student-cap{display:grid;place-items:center;width:48px;height:48px;border-radius:12px;background:#193d6b;color:#fff;font-size:25px;flex:none}
+.group-label{display:block;color:#617ba0;font-size:9px;font-weight:700;letter-spacing:1.7px}
+.island-block-heading h3{margin:3px 0 0;font:600 24px 'Playfair Display';color:#17385f}
+.group-total{margin-left:auto;color:#607b9e;font-size:12px;font-weight:600}
+.qualification-block{margin:14px 0 0 25px;padding-left:18px;border-left:2px solid #dce5ef}
+.qualification-heading{display:flex;align-items:center;gap:9px;margin:0 0 12px}
+.qualification-heading h4{margin:0;color:#274660;font:700 16px 'DM Sans';letter-spacing:.3px}
+.course-swatch{width:10px;height:22px;border-radius:5px;background:#228b82}
+.course-pnb .course-swatch{background:#3478c7}.course-per .course-swatch{background:#17877d}.course-py .course-swatch{background:#d59437}.course-cy .course-swatch{background:#9363b5}
+.year-block{margin:16px 0 22px}
+.year-heading{margin:0 0 10px;color:#7a8794;font:700 11px 'DM Sans';letter-spacing:1.3px;text-transform:uppercase}
+.exam-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}
+.school-exam-card{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:178px;padding:18px;border:1px solid #e1e7ea;border-left:4px solid #17877d;border-radius:9px;background:#fff;box-shadow:0 3px 12px #12394a0a}
+.school-exam-card.course-pnb{border-left-color:#3478c7}.school-exam-card.course-py{border-left-color:#d59437}.school-exam-card.course-cy{border-left-color:#9363b5}
+.school-exam-title{display:flex;align-items:flex-start;gap:11px;min-width:0}
+.school-book{display:grid;place-items:center;width:34px;height:34px;border-radius:8px;background:#edf3ff;font-size:18px;flex:none}
+.school-exam-title h6{min-width:0;margin:2px 0;color:#213b53;font:600 14px/1.45 'DM Sans';overflow-wrap:anywhere}
+.school-exam-card .pending-admin-review{margin:0;color:#a56817;font-size:11px}
+.school-exam-card .outline{width:100%;margin-top:auto;display:flex;align-items:center;justify-content:space-between;background:#fff;border-color:#d7e2e5;padding:10px 12px}
+.exam-search .primary:disabled{opacity:.5;cursor:not-allowed}
+.theme-toggle{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #dce6e2;border-radius:20px;background:#fff;color:#35575c;font:600 11px 'DM Sans';cursor:pointer}
+.theme-toggle:hover{border-color:#23887e;color:#16766e}
+html[data-theme="dark"]{color-scheme:dark;background:#101a1e;color:#e5efef}
+html[data-theme="dark"] body{background:#101a1e;color:#e5efef}
+html[data-theme="dark"] main{color:#e5efef}
+html[data-theme="dark"] header{border-color:#283c42}
+html[data-theme="dark"] .brand,html[data-theme="dark"] .welcome h1,html[data-theme="dark"] .content>h1{color:#e7f0f0}
+html[data-theme="dark"] nav a,html[data-theme="dark"] .ghost{color:#b9cbcc}
+html[data-theme="dark"] .card,html[data-theme="dark"] .school-exam-card{background:#192a30;border-color:#2c4148;color:#e3eeee;box-shadow:0 8px 24px #0003}
+html[data-theme="dark"] .section-title h2,html[data-theme="dark"] .content h2,html[data-theme="dark"] .practice-summary h2,html[data-theme="dark"] .practice-config-controls h3,html[data-theme="dark"] .settings-card h2,html[data-theme="dark"] .exam h3{color:#e3eeee}
+html[data-theme="dark"] .practice-summary p,html[data-theme="dark"] .welcome p,html[data-theme="dark"] .exam p,html[data-theme="dark"] .review-block-link small,html[data-theme="dark"] .settings-card p{color:#a9bec1}
+html[data-theme="dark"] .exam-search select,html[data-theme="dark"] .practice-fields select,html[data-theme="dark"] .settings-card select,html[data-theme="dark"] input{background:#102127;border-color:#385158;color:#e5efef}
+html[data-theme="dark"] .outline,html[data-theme="dark"] .theme-toggle,html[data-theme="dark"] .school-exam-card .outline{background:#1c3239;border-color:#3a535a;color:#dce9e8}
+html[data-theme="dark"] .island-block-heading{background:#1a2d42;border-color:#304964;color:#e1eaf7}
+html[data-theme="dark"] .island-block-heading h3,html[data-theme="dark"] .qualification-heading h4{color:#e1eaf7}
+html[data-theme="dark"] .group-label,html[data-theme="dark"] .group-total,html[data-theme="dark"] .year-heading{color:#9cb2c9}
+html[data-theme="dark"] .qualification-block{border-color:#344b57}
+html[data-theme="dark"] .school-exam-title h6{color:#e0ebeb}
+html[data-theme="dark"] .school-book{background:#243f4a}
+html[data-theme="dark"] .note{border-color:#2e484b;background:#17292d}
+html[data-theme="dark"] .note b{color:#d7e7e5}
+html[data-theme="dark"] .empty,html[data-theme="dark"] .section-title>span{color:#a6b8ba}
+@media(max-width:760px){.qualification-block{margin-left:10px;padding-left:12px}.island-block-heading{padding:13px 14px}.student-cap{width:42px;height:42px}}
+@media(max-width:480px){.group-total{font-size:10px}.island-block-heading h3{font-size:20px}.school-exam-card{min-height:0}.theme-toggle span{display:none}.theme-toggle{padding:8px}}
+
+html[data-theme="dark"] .option{background:#182b31;border-color:#354d54;color:#d8e5e5}
+html[data-theme="dark"] .option b{background:#263d44;color:#cde0df}
+html[data-theme="dark"] .option.option-correct{background:#163b2a;border-color:#30884e;color:#d5f5df}
+html[data-theme="dark"] .option.option-correct>b{background:#21894b;color:#fff}
+html[data-theme="dark"] .option.option-incorrect{background:#401f25;border-color:#a7444c;color:#ffe1e2}
+html[data-theme="dark"] .option.option-incorrect>b{background:#b63f49;color:#fff}
+html[data-theme="dark"] .instant-correct{background:#153829;border-color:#387d51;color:#d7f2df}
+html[data-theme="dark"] .instant-incorrect{background:#3d2025;border-color:#87434a;color:#f8dfe0}
+html[data-theme="dark"] .official-multiple-answer-note{background:#3c321b;border-color:#8a7136;color:#f3e3ba}
+html[data-theme="dark"] .review-block-link{color:#91d4c8}
+html[data-theme="dark"] .note span{color:#a9c1be}
+
+.result-options{display:grid;gap:8px;margin:15px 0}.result-option{display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:center;gap:11px;padding:11px 13px;border:1px solid #e1e9e6;border-radius:7px;background:#fff;color:#526c70;font-size:13px;line-height:1.5}.result-option>b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#eff5f2;color:#33867d}.result-option small{font-size:10px;font-weight:700;white-space:nowrap}.result-option-correct{border-color:#21894b;background:#eaf7ee;color:#205b35}.result-option-correct>b{background:#21894b;color:#fff}.result-option-correct small{color:#21894b}.result-option-incorrect{border-color:#c9424d;background:#fff0f0;color:#8f2830}.result-option-incorrect>b{background:#c9424d;color:#fff}.result-option-incorrect small{color:#b63842}
+html[data-theme="dark"] .result-option{background:#182b31;border-color:#354d54;color:#d8e5e5}html[data-theme="dark"] .result-option>b{background:#263d44;color:#cde0df}html[data-theme="dark"] .result-option-correct{background:#163b2a;border-color:#30884e;color:#d5f5df}html[data-theme="dark"] .result-option-correct>b{background:#21894b;color:#fff}html[data-theme="dark"] .result-option-correct small{color:#8ce0a4}html[data-theme="dark"] .result-option-incorrect{background:#401f25;border-color:#a7444c;color:#ffe1e2}html[data-theme="dark"] .result-option-incorrect>b{background:#b63f49;color:#fff}html[data-theme="dark"] .result-option-incorrect small{color:#ff9da4}
+@media(max-width:520px){.result-option{grid-template-columns:28px minmax(0,1fr);gap:8px}.result-option small{grid-column:2}}
+
+.session-block{margin:12px 0 20px;padding-left:9px}
+.session-heading{display:flex;align-items:baseline;gap:9px;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid #e4e9e9}
+.session-kicker{color:#82919a;font-size:8px;font-weight:700;letter-spacing:1.5px}
+.session-heading h6{margin:0;color:#405b70;font:700 13px 'DM Sans';text-transform:capitalize}
+html[data-theme="dark"] .session-heading{border-color:#34474d}
+html[data-theme="dark"] .session-kicker{color:#9cb2b8}
+html[data-theme="dark"] .session-heading h6{color:#d8e6e6}
+@media(max-width:760px){.session-block{padding-left:4px}}

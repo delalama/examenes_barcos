@@ -76,6 +76,7 @@ model Preference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   licenses String[]
   islands String[]
+  theme String @default("LIGHT")
   updatedAt DateTime @updatedAt
 }
 model Device {
@@ -118,6 +119,7 @@ model Question {
   startPage Int?
   endPage Int?
   imagePath String?
+  imageData Bytes?
   warnings String[]
   rawText String?
   sourceBoxes Json?

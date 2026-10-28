@@ -2,16 +2,34 @@ services:
   - type: web
     name: nautical-exams-api
     runtime: docker
+    region: frankfurt
     dockerfilePath: ./backend/Dockerfile
     healthCheckPath: /api/health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: nautical-exams-db
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: OCR_REVIEW_ENABLED
+        value: "false"
+  - type: web
+    name: nautical-exams-web
+    runtime: static
+    buildCommand: npm ci && npm run build --workspace frontend
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_ADMIN_OCR_ENABLED
+        value: "false"
 databases:
   - name: nautical-exams-db
     databaseName: nautical
     user: nautical
+    region: frankfurt

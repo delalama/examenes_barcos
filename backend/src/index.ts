@@ -14,19 +14,21 @@ import { execFileSync } from "node:child_process";
 import { grade } from "./grading";
 
 const app=express(), db=new PrismaClient(), port=Number(process.env.PORT||4000), secret=process.env.JWT_SECRET||"dev-only-change-me-32-characters";
-const stagingDir=resolve(process.cwd(),"../importer/out/bulk-analysis/documents"), correctionsFile=resolve(process.cwd(),"../importer/out/bulk-analysis/review-corrections.json"), pdfRoot=resolve(process.cwd(),"../exams/pdfs");
+const storageRoot=resolve(process.env.STORAGE_ROOT||"../storage"), importerOutRoot=resolve(process.env.IMPORT_OUT_ROOT||"../importer/out");
+const stagingDir=resolve(process.env.STAGING_DIR||join(importerOutRoot,"bulk-analysis/documents")), correctionsFile=resolve(process.env.CORRECTIONS_FILE||join(importerOutRoot,"bulk-analysis/review-corrections.json")), pdfRoot=resolve(process.env.PDF_ROOT||"../exams/pdfs");
 app.use(cors({origin:process.env.FRONTEND_ORIGIN?.split(",")||true})); app.use(express.json({limit:"1mb"}));
 const authLimit=rateLimit({windowMs:900000,limit:10,standardHeaders:true,legacyHeaders:false});
 app.get("/api/health",(_req,res)=>res.json({ok:true}));
 function auth(req:any,res:any,next:any){try{const token=req.headers.authorization?.replace(/^Bearer /,"");req.user=jwt.verify(token,secret);next()}catch{return res.status(401).json({error:"Autenticación requerida"})}}
 function admin(req:any,res:any,next:any){if(req.user?.role!=="ADMIN")return res.status(403).json({error:"Permiso insuficiente"});next()}
+function ocrAdmin(req:any,res:any,next:any){if(process.env.OCR_REVIEW_ENABLED==="false")return res.status(404).json({error:"Revisi?n OCR deshabilitada en este entorno"});admin(req,res,next)}
 function isProbableAnswerError(warnings:string[]):boolean{return warnings.some((warning)=>warning.includes("probablemente errónea"))}
 function officialAnswerCandidates(_answerSource:string|null,warnings:string[]):string[]{const value=warnings.find((warning)=>warning.startsWith("El PDF indica varias respuestas ("));const match=value?.match(/\(([A-D](?:, [A-D])*)\)/);return match?match[1].split(", "):[]}
 app.post("/api/auth/register",authLimit,async(req,res)=>{try{const v=z.object({email:z.string().email(),password:z.string().min(10),name:z.string().min(1)}).parse(req.body);if(process.env.NODE_ENV==="production")return res.status(403).json({error:"Registro público deshabilitado"});const user=await db.user.create({data:{...v,passwordHash:await bcrypt.hash(v.password,12)},select:{id:true,email:true,name:true,role:true}});res.status(201).json(user)}catch(e:any){res.status(400).json({error:e.message})}});
 app.post("/api/auth/login",authLimit,async(req,res)=>{const v=z.object({email:z.string().email(),password:z.string()}).safeParse(req.body);if(!v.success)return res.status(400).json({error:"Datos no válidos"});const u=await db.user.findUnique({where:{email:v.data.email}});if(!u||!u.active||!await bcrypt.compare(v.data.password,u.passwordHash))return res.status(401).json({error:"Credenciales incorrectas"});res.json({token:jwt.sign({id:u.id,role:u.role},secret,{expiresIn:"12h"}),user:{id:u.id,email:u.email,name:u.name,role:u.role}})});
 app.get("/api/auth/me",auth,async(req:any,res)=>res.json(await db.user.findUnique({where:{id:req.user.id},select:{id:true,email:true,name:true,role:true,preferences:true}})));
 app.get("/api/users/me/preferences",auth,async(req:any,res)=>res.json(await db.preference.findUnique({where:{userId:req.user.id}})));
-app.patch("/api/users/me/preferences",auth,async(req:any,res)=>{const v=z.object({licenses:z.array(z.enum(["PNB","PER","PY","CY"])),islands:z.array(z.enum(["Mallorca","Menorca","Ibiza"]))}).parse(req.body);res.json(await db.preference.upsert({where:{userId:req.user.id},create:{userId:req.user.id,...v},update:v}))});
+app.patch("/api/users/me/preferences",auth,async(req:any,res)=>{const v=z.object({licenses:z.array(z.enum(["PNB","PER","PY","CY"])).optional(),islands:z.array(z.enum(["Mallorca","Menorca","Ibiza"])).optional(),theme:z.enum(["LIGHT","DARK"]).optional()}).parse(req.body);res.json(await db.preference.upsert({where:{userId:req.user.id},create:{userId:req.user.id,licenses:v.licenses??[],islands:v.islands??[],theme:v.theme??"LIGHT"},update:v}))});
 app.get("/api/review-block",auth,async(req:any,res)=>{const items=await db.reviewBlockItem.findMany({where:{userId:req.user.id},orderBy:[{masteredAt:"asc"},{createdAt:"desc"}],include:{question:{select:{id:true,number:true,prompt:true,options:true,answer:true,answerSource:true,warnings:true,exam:{select:{id:true,title:true,license:true,island:true,year:true,session:true}}}}}});const mastered=items.filter((item)=>item.masteredAt).length;res.json({items:items.map((item)=>({...item,probableAnswerError:isProbableAnswerError(item.question.warnings),officialAnswerCandidates:officialAnswerCandidates(item.question.answerSource,item.question.warnings)})),total:items.length,active:items.length-mastered,mastered,progress:items.length?Math.round(100*mastered/items.length):0})});
 app.post("/api/review-block/:questionId",auth,async(req:any,res)=>{const question=await db.question.findFirst({where:{id:req.params.questionId,status:"VALIDATED",exam:{status:"PUBLISHED"}},select:{id:true}});if(!question)return res.status(404).json({error:"Pregunta no disponible para repaso"});const item=await db.reviewBlockItem.upsert({where:{userId_questionId:{userId:req.user.id,questionId:question.id}},create:{userId:req.user.id,questionId:question.id},update:{masteredAt:null}});res.status(201).json(item)});
 app.patch("/api/review-block/:questionId",auth,async(req:any,res)=>{const v=z.object({mastered:z.boolean()}).safeParse(req.body);if(!v.success)return res.status(400).json({error:"Estado de repaso no v?lido"});const result=await db.reviewBlockItem.updateMany({where:{userId:req.user.id,questionId:req.params.questionId},data:{masteredAt:v.data.mastered?new Date():null}});if(!result.count)return res.status(404).json({error:"La pregunta no est? en tu bloque de repaso"});res.json({ok:true,mastered:v.data.mastered})});
@@ -79,7 +81,7 @@ function readCorrections():Corrections { if(!existsSync(correctionsFile))return 
 function walkFiles(dir:string):string[] { if(!existsSync(dir))return []; return readdirSync(dir).flatMap((name)=>{const path=join(dir,name);return statSync(path).isDirectory()?walkFiles(path):path.toLowerCase().endsWith(".pdf")?[path]:[]}) }
 let pdfHashCache:Map<string,string[]>|null=null;
 function currentPdfPaths():Map<string,string[]> { if(pdfHashCache)return pdfHashCache;const paths=new Map<string,string[]>(); for(const path of walkFiles(pdfRoot)){if(basename(path).toLowerCase().includes("marees"))continue;const sha=createHash("sha256").update(readFileSync(path)).digest("hex");const list=paths.get(sha)||[];list.push(path);paths.set(sha,list)} pdfHashCache=paths;return paths }
-app.get("/api/admin/ocr-review",auth,admin,(_req,res)=>{
+app.get("/api/admin/ocr-review",auth,ocrAdmin,(_req,res)=>{
  try {
    const corrections=readCorrections(), pdfPaths=currentPdfPaths(), items:any[]=[];
    const counts={total:0,pending:0,validated:0,rejected:0,imagePending:0,imageAttached:0,autoValidated:0,probableAnswerErrors:0};
@@ -103,27 +105,27 @@ app.get("/api/admin/ocr-review",auth,admin,(_req,res)=>{
    res.json({items:filtered,counts});
  }catch(error:any){res.status(500).json({error:`No se pudo cargar staging: ${error.message}`})}
 });
-app.get("/api/admin/ocr-review/:sha/pdf",auth,admin,(req,res)=>{
+app.get("/api/admin/ocr-review/:sha/pdf",auth,ocrAdmin,(req,res)=>{
  try {if(!/^[a-f0-9]{64}$/.test(req.params.sha))return res.status(400).json({error:"SHA inválido"});const path=currentPdfPaths().get(req.params.sha)?.[0];if(!path)return res.status(404).json({error:"PDF no encontrado en la colección actual"});res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition","inline");res.sendFile(path)}catch(error:any){res.status(500).json({error:error.message})}
 });
-app.get("/api/admin/ocr-review/:sha/page/:page",auth,admin,(req,res)=>{
+app.get("/api/admin/ocr-review/:sha/page/:page",auth,ocrAdmin,(req,res)=>{
  try {
   if(!/^[a-f0-9]{64}$/.test(req.params.sha))return res.status(400).json({error:"SHA inválido"});
   const page=Number(req.params.page);if(!Number.isInteger(page)||page<1)return res.status(400).json({error:"Página inválida"});
   const pdf=currentPdfPaths().get(req.params.sha)?.[0];if(!pdf)return res.status(404).json({error:"PDF no encontrado en la colección actual"});
-  const output=resolve(process.cwd(),`../storage/review-page-previews/${req.params.sha}/${page}.png`);
+  const output=join(storageRoot,"review-page-previews",req.params.sha,`${page}.png`);
   if(!existsSync(output))execFileSync(process.env.PYTHON_EXECUTABLE||"python",[resolve(process.cwd(),"../importer/render_pdf_region.py"),"--pdf",pdf,"--page",String(page),"--output",output],{timeout:30000});
   res.setHeader("Cache-Control","private, max-age=3600");res.sendFile(output);
  }catch(error:any){res.status(500).json({error:`No se pudo renderizar la página: ${error.message}`})}
 });
-app.post("/api/admin/ocr-review/:sha/:number/image",auth,admin,(req:any,res)=>{
+app.post("/api/admin/ocr-review/:sha/:number/image",auth,ocrAdmin,(req:any,res)=>{
  const parsed=z.object({page:z.number().int().positive(),crop:z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1),width:z.number().positive().max(1),height:z.number().positive().max(1)})}).safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Recorte no válido",details:parsed.error.flatten()});
  const {page,crop}=parsed.data;if(crop.x+crop.width>1.001||crop.y+crop.height>1.001||crop.width<0.015||crop.height<0.015)return res.status(400).json({error:"Selecciona un recorte dentro de la página"});
  if(!/^[a-f0-9]{64}$/.test(req.params.sha)||!/^\d+$/.test(req.params.number))return res.status(400).json({error:"Identificador de pregunta no válido"});
  try {
   const pdf=currentPdfPaths().get(req.params.sha)?.[0];if(!pdf)return res.status(404).json({error:"PDF no encontrado en la colección actual"});
-  const filename=`${req.params.sha}-${req.params.number}.png`,imageDir=resolve(process.cwd(),"../storage/question-images"),output=join(imageDir,filename);
+  const filename=`${req.params.sha}-${req.params.number}.png`,imageDir=join(storageRoot,"question-images"),output=join(imageDir,filename);
   execFileSync(process.env.PYTHON_EXECUTABLE||"python",[resolve(process.cwd(),"../importer/render_pdf_region.py"),"--pdf",pdf,"--page",String(page),"--output",output,"--crop",String(crop.x),String(crop.y),String(crop.width),String(crop.height)],{timeout:30000});
   const corrections=readCorrections();corrections[req.params.sha] ||= {};const previous=corrections[req.params.sha][req.params.number]||{} as Correction;
   corrections[req.params.sha][req.params.number]={...previous,imagePath:filename,imageReviewStatus:"ATTACHED",updatedAt:new Date().toISOString(),updatedBy:String(req.user?.id||"")};
@@ -131,25 +133,25 @@ app.post("/api/admin/ocr-review/:sha/:number/image",auth,admin,(req:any,res)=>{
   res.json({ok:true,imagePath:filename});
  }catch(error:any){res.status(500).json({error:`No se pudo guardar la imagen: ${error.message}`})}
 });
-app.get("/api/admin/ocr-review/:sha/:number/image",auth,admin,(req,res)=>{
+app.get("/api/admin/ocr-review/:sha/:number/image",auth,ocrAdmin,(req,res)=>{
  try {
   if(!/^[a-f0-9]{64}$/.test(req.params.sha)||!/^[0-9]+$/.test(req.params.number))return res.status(400).json({error:"Identificador no válido"});
   const correction=readCorrections()[req.params.sha]?.[req.params.number];if(correction?.imageReviewStatus==="NOT_REQUIRED")return res.status(404).json({error:"Esta pregunta está marcada sin imagen"});
   const documentPath=join(stagingDir,`${req.params.sha}.json`);if(!existsSync(documentPath))return res.status(404).json({error:"Documento staging no encontrado"});
   const document=JSON.parse(readFileSync(documentPath,"utf8")),question=document.questions.find((item:any)=>item.number===Number(req.params.number));
   const filename=correction?.imagePath||question?.imagePath;if(!filename||!/^[a-f0-9]{64}-\d+(?:-auto)?\.png$/.test(filename))return res.status(404).json({error:"La pregunta aún no tiene imagen asociada"});
-  const storageImage=resolve(process.cwd(),"../storage/question-images",filename),stagingImage=resolve(stagingDir,"../images",filename),image=existsSync(storageImage)?storageImage:stagingImage;
+  const storageImage=join(storageRoot,"question-images",filename),stagingImage=resolve(stagingDir,"../images",filename),image=existsSync(storageImage)?storageImage:stagingImage;
   if(!existsSync(image))return res.status(404).json({error:"Archivo de imagen no encontrado"});res.type("png").sendFile(image);
  }catch(error:any){res.status(500).json({error:error.message})}
 });
 app.get("/api/question-images/:filename",auth,async(req,res)=>{
- const filename=String(req.params.filename);if(!/^[a-f0-9]{64}-\d+(?:-auto)?\.png$/.test(filename))return res.status(400).json({error:"Imagen no válida"});
- const question=await db.question.findFirst({where:{imagePath:filename,status:"VALIDATED",exam:{status:"PUBLISHED"}},select:{id:true}});
+ const filename=String(req.params.filename);if(!/^[a-f0-9]{64}-\d+(?:-auto)?\.png$/.test(filename))return res.status(400).json({error:"Imagen no v?lida"});
+ const question=await db.question.findFirst({where:{imagePath:filename,status:"VALIDATED",exam:{status:"PUBLISHED"}},select:{imageData:true}});
  if(!question)return res.status(404).json({error:"Imagen no disponible"});
- const image=resolve(process.cwd(),"../storage/question-images",filename);if(!existsSync(image))return res.status(404).json({error:"Imagen no encontrada"});
- res.setHeader("Cache-Control","private, max-age=3600");res.type("png").sendFile(image);
+ if(!question.imageData)return res.status(404).json({error:"Imagen no encontrada en la base de datos"});
+ res.setHeader("Cache-Control","private, max-age=3600");res.type("png").send(Buffer.from(question.imageData));
 });
-app.patch("/api/admin/ocr-review/:sha/:number",auth,admin,(req:any,res)=>{
+app.patch("/api/admin/ocr-review/:sha/:number",auth,ocrAdmin,(req:any,res)=>{
  const parsed=z.object({prompt:z.string().min(1),options:z.record(z.string(),z.string()),answer:z.string().nullable(),status:z.enum(["PENDING_REVIEW","VALIDATED","REJECTED"]),reviewerNote:z.string().max(2000).default(""),imageReviewStatus:z.enum(["PENDING_REVIEW","ATTACHED","NOT_REQUIRED"]).optional()}).safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Corrección no válida",details:parsed.error.flatten()});
  if(!/^[a-f0-9]{64}$/.test(req.params.sha)||!/^\d+$/.test(req.params.number))return res.status(400).json({error:"Identificador de pregunta no válido"});

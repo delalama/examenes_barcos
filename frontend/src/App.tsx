@@ -4,12 +4,14 @@ import AdminReview from "./AdminReview";
 import ReviewBlock from "./ReviewBlock";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
-type Exam = { id:string; title:string; license:string; island:string; year:number; pendingReviewCount:number };
+const adminOcrEnabled = import.meta.env.VITE_ADMIN_OCR_ENABLED !== "false";
+type Exam = { id:string; title:string; license:string; island:string|null; year:number|null; session:string|null; pendingReviewCount:number };
 type Question = { id:string; number:number; prompt:string; options:Record<string,string>; imagePath?:string|null; probableAnswerError?:boolean; officialAnswerCandidates?:string[] };
 
 export default function App() {
   const [token,setToken]=useState(localStorage.getItem("token")||"");
   const [user,setUser]=useState<any>(null);
+  const [theme,setTheme]=useState<"LIGHT"|"DARK">(localStorage.getItem("theme")==="DARK"?"DARK":"LIGHT");
   const [exams,setExams]=useState<Exam[]>([]);
   const [error,setError]=useState("");
   const navigate=useNavigate();
@@ -20,9 +22,11 @@ export default function App() {
     return data;
   },[token]);
 
+  useEffect(()=>{document.documentElement.dataset.theme=theme.toLowerCase();localStorage.setItem("theme",theme)},[theme]);
+
   useEffect(()=>{
     if(!token)return;
-    api("/auth/me").then(setUser).catch(()=>{localStorage.removeItem("token");setToken("")});
+    api("/auth/me").then((data:any)=>{setUser(data);if(data.preferences?.theme==="LIGHT"||data.preferences?.theme==="DARK")setTheme(data.preferences.theme)}).catch(()=>{localStorage.removeItem("token");setToken("")});
     api("/exams").then(setExams).catch((e)=>setError(e.message));
   },[api,token]);
 
@@ -31,9 +35,10 @@ export default function App() {
     try{const data=await api("/auth/login",{method:"POST",body:JSON.stringify({email:form.get("email"),password:form.get("password")})});localStorage.setItem("token",data.token);setToken(data.token);setUser(null)}catch(e:any){setError(e.message)}
   }
   function logout(){localStorage.removeItem("token");setToken("");setUser(null)}
+  async function toggleTheme(){const next=theme==="DARK"?"LIGHT":"DARK";setTheme(next);try{const preferences=await api("/users/me/preferences",{method:"PATCH",body:JSON.stringify({theme:next})});setUser((current:any)=>current?{...current,preferences}:current)}catch(e:any){setTheme(theme);setError(e.message||"No se pudo guardar el tema")}}
 
   return <main>
-    <header><Link to="/" className="brand">⚓ PRÁCTICA <span>EXÁMENES</span></Link>{user&&<nav><Link to="/">Inicio</Link><Link to="/review-block">Bloque de repaso</Link><Link to="/progress">Mi progreso</Link><Link to="/settings">Opciones</Link>{user.role==="ADMIN"&&<Link to="/admin/revision-ocr">Admin · OCR</Link>}<button className="ghost" onClick={logout}>Salir</button></nav>}</header>
+    <header><Link to="/" className="brand">⚓ PRÁCTICA <span>EXÁMENES</span></Link>{user&&<nav><Link to="/">Inicio</Link><Link to="/review-block">Bloque de repaso</Link><Link to="/progress">Mi progreso</Link><Link to="/settings">Opciones</Link><button type="button" className="theme-toggle" onClick={()=>void toggleTheme()} aria-label={theme==="DARK"?"Activar tema claro":"Activar tema oscuro"}>{theme==="DARK"?"☀":"☾"}<span>{theme==="DARK"?"Claro":"Oscuro"}</span></button>{user.role==="ADMIN"&&<Link to="/admin/revision-ocr">Admin · OCR</Link>}<button className="ghost" onClick={logout}>Salir</button></nav>}</header>
     {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>×</button></div>}
     {!user?<section className="hero"><div><div className="eyebrow">FORMACIÓN NÁUTICA · ILLES BALEARS</div><h1>Tu próximo título<br/><em>empieza aquí.</em></h1><p>Practica con exámenes oficiales PNB, PER, PY y CY. A tu ritmo, desde cualquier lugar.</p><div className="chips">{["PNB","PER","PY","CY"].map((license)=><span key={license}>{license}</span>)}</div></div><form className="card login" onSubmit={login}><h2>Bienvenido</h2><p>Accede para continuar practicando.</p><label>Correo electrónico<input name="email" type="email" required autoComplete="email"/></label><label>Contraseña<input name="password" type="password" required autoComplete="current-password"/></label><button className="primary">Iniciar sesión →</button></form></section>:<Routes>
       <Route path="/" element={<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
@@ -41,7 +46,7 @@ export default function App() {
       <Route path="/progress" element={<Progress api={api}/>}/>
       <Route path="/attempt/:id" element={<Attempt api={api} token={token}/>}/>
       <Route path="/review-block" element={<ReviewBlock api={api} navigate={navigate}/>}/>
-      <Route path="/admin/revision-ocr" element={user.role==="ADMIN"?<AdminReview api={api} token={token}/>:<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
+      <Route path="/admin/revision-ocr" element={user.role==="ADMIN"&&adminOcrEnabled?<AdminReview api={api} token={token}/>:<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
       <Route path="*" element={<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
     </Routes>}
     <footer>PRÁCTICA EXÁMENES NÁUTICOS <span>Hecho para navegar con confianza · Illes Balears</span></footer>
@@ -59,6 +64,31 @@ function Home({user,setUser,exams,api,navigate}:any){
   const hasLicensePreference=Boolean(user.preferences?.licenses?.length);
   const filteredExams=exams.filter((exam:Exam)=>(!license||exam.license===license)&&(!island||exam.island===island)&&(!year||String(exam.year)===year));
   const years:number[]=Array.from(new Set<number>((exams as Exam[]).map(exam=>exam.year).filter((value):value is number=>Boolean(value)))).sort((a,b)=>b-a);
+  const examTree=new Map<string,Map<string,Map<string,Map<string,Exam[]>>>>();
+  for(const exam of filteredExams as Exam[]){
+    const islandName=exam.island||"Sin isla",licenseName=exam.license||"Sin titulaci?n",yearName=exam.year?String(exam.year):"Sin a?o",sessionName=exam.session?.trim()||"Sin convocatoria";
+    if(!examTree.has(islandName))examTree.set(islandName,new Map());
+    const licenses=examTree.get(islandName)!;
+    if(!licenses.has(licenseName))licenses.set(licenseName,new Map());
+    const yearsForLicense=licenses.get(licenseName)!;
+    if(!yearsForLicense.has(yearName))yearsForLicense.set(yearName,new Map());
+    const sessions=yearsForLicense.get(yearName)!;
+    if(!sessions.has(sessionName))sessions.set(sessionName,[]);
+    sessions.get(sessionName)!.push(exam);
+  }
+  const licenseOrder=["PNB","PER","PY","CY"];
+  const islandOrder=["Mallorca","Menorca","Ibiza","Sin isla"];
+  const monthOrder=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const catalogGroups=Array.from(examTree.entries()).map(([islandName,licenses])=>({
+    island:islandName,
+    licenses:Array.from(licenses.entries()).sort(([a],[b])=>(licenseOrder.indexOf(a)<0?99:licenseOrder.indexOf(a))-(licenseOrder.indexOf(b)<0?99:licenseOrder.indexOf(b))).map(([licenseName,yearsByName])=>({
+      license:licenseName,
+      years:Array.from(yearsByName.entries()).sort(([a],[b])=>a==="Sin a?o"?1:b==="Sin a?o"?-1:Number(b)-Number(a)).map(([yearName,sessionsByName])=>({
+        year:yearName,
+        sessions:Array.from(sessionsByName.entries()).sort(([a],[b])=>{const ai=monthOrder.indexOf(a.toLocaleLowerCase("es-ES")),bi=monthOrder.indexOf(b.toLocaleLowerCase("es-ES"));return (ai<0?99:ai)-(bi<0?99:bi)||a.localeCompare(b,"es")}).map(([sessionName,items])=>({session:sessionName==="Sin convocatoria"?sessionName:sessionName.charAt(0).toLocaleUpperCase("es-ES")+sessionName.slice(1),exams:items}))
+      }))
+    }))
+  })).sort((a,b)=>{const ai=islandOrder.indexOf(a.island),bi=islandOrder.indexOf(b.island);return (ai<0?99:ai)-(bi<0?99:bi)||a.island.localeCompare(b.island,"es")});
   useEffect(()=>{if(user.preferences?.licenses?.[0])setLicense(user.preferences.licenses[0])},[user.preferences?.licenses?.[0]]);
   async function saveInterest(value:string){
     setSavingPreference(true);
@@ -86,7 +116,43 @@ function Home({user,setUser,exams,api,navigate}:any){
     <Link className="review-block-link card" to="/review-block"><span><b>Bloque de repaso</b><small>Administra las preguntas difíciles y mide tu progreso.</small></span><strong>Ver bloque</strong></Link>
     <div className="section-title"><div><div className="eyebrow">TU PREPARACIÓN</div><h2>Buscar exámenes oficiales</h2></div><span>{searched?`${filteredExams.length} resultados`:`${exams.length} exámenes disponibles`}</span></div>
     <section className="exam-search card"><label>Isla<select value={island} onChange={e=>{setIsland(e.target.value);setSearched(false)}}><option value="">Todas las islas</option>{['Mallorca','Menorca','Ibiza'].map(value=><option key={value}>{value}</option>)}</select></label><label>Titulación<select value={license} onChange={e=>{setLicense(e.target.value);setSearched(false)}}><option value="">Todas</option>{['PNB','PER','PY','CY'].map(value=><option key={value}>{value}</option>)}</select></label><label>Año<select value={year} onChange={e=>{setYear(e.target.value);setSearched(false)}}><option value="">Todos</option>{years.map(value=><option key={value} value={value}>{value}</option>)}</select></label><button className="primary" disabled={!license&&!island&&!year} onClick={()=>setSearched(true)}>Buscar exámenes</button></section>
-    {searched?<div className="exam-grid">{filteredExams.map((exam:Exam)=><article className="exam card" key={exam.id}><div className="exam-top"><span className="license">{exam.license}</span><span aria-hidden="true">↗</span></div><h3>{exam.title}</h3><p>Isla: {exam.island||'Illes Balears'} · {exam.year||'—'}</p>{exam.pendingReviewCount>0&&<p className="pending-admin-review">Pendiente revisión administrador ({exam.pendingReviewCount})</p>}<button className="outline" onClick={()=>void startExam(exam)}>Hacer examen <span>→</span></button></article>)}{!filteredExams.length&&<p className="empty">No hay exámenes que coincidan. Prueba con otros filtros.</p>}</div>:<p className="empty search-hint">Elige al menos un filtro para mostrar los resultados.</p>}
+    {searched&&filteredExams.length>0?(
+      <div className="exam-catalog">
+        {catalogGroups.map(islandGroup=>(
+          <section className="island-block" key={islandGroup.island}>
+            <div className="island-block-heading">
+              <span className="student-cap" aria-hidden="true">??</span>
+              <div><span className="group-label">ISLA</span><h3>{islandGroup.island}</h3></div>
+              <span className="group-total">{islandGroup.licenses.reduce((n,group)=>n+group.years.reduce((y,yearGroup)=>y+yearGroup.sessions.reduce((m,sessionGroup)=>m+sessionGroup.exams.length,0),0),0)} examenes</span>
+            </div>
+            {islandGroup.licenses.map(licenseGroup=>(
+              <section className="qualification-block" key={licenseGroup.license}>
+                <div className={`qualification-heading course-${licenseGroup.license.toLowerCase()}`}><span className="course-swatch" aria-hidden="true"/><h4>{licenseGroup.license}</h4></div>
+                {licenseGroup.years.map(yearGroup=>(
+                  <section className="year-block" key={yearGroup.year}>
+                    <h5 className="year-heading">{yearGroup.year}</h5>
+                    {yearGroup.sessions.map(sessionGroup=>(
+                      <section className="session-block" key={sessionGroup.session}>
+                        <div className="session-heading"><span className="session-kicker">CONVOCATORIA</span><h6>{sessionGroup.session}</h6></div>
+                        <div className="exam-grid">
+                          {sessionGroup.exams.map(exam=>(
+                            <article className={`school-exam-card course-${licenseGroup.license.toLowerCase()}`} key={exam.id}>
+                              <div className="school-exam-title"><span className="school-book" aria-hidden="true">📘</span><h6>{exam.title.replace(/\.pdf$/i,'')}</h6></div>
+                              {exam.pendingReviewCount>0&&<p className="pending-admin-review">Revision admin pendiente ? {exam.pendingReviewCount}</p>}
+                              <button className="outline" onClick={()=>void startExam(exam)}>Hacer examen <span>→</span></button>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </section>
+                ))}
+              </section>
+            ))}
+          </section>
+        ))}
+      </div>
+    ):searched?<p className="empty">No hay examenes que coincidan. Prueba con otros filtros.</p>:<p className="empty search-hint">Elige al menos un filtro para mostrar los resultados.</p>}
     <div className="note"><span aria-hidden="true">⚓</span><span><b>Consejo de navegación</b><br/>Lee cada pregunta con calma y confía en lo que has estudiado.</span></div>
   </div>;
 }
@@ -116,7 +182,7 @@ function AttemptInner({id,api,token,navigate}:any){
     const review=result.review||[];
     const shown=mode==='ROUND'||mode==='REVIEW_BLOCK'?review.filter((q:any)=>q.probableAnswerError||!q.selected||q.selected!==q.correct):review;
     const oneByOne=mode==='ONE_BY_ONE';
-    return <div className="content result"><div className="eyebrow">{oneByOne?'CORRECCIÓN INSTANTÁNEA':mode==='OFFICIAL'?'REVISIÓN DEL EXAMEN':'RESULTADO DE LA RONDA'}</div>{!oneByOne&&<><h1>{Math.round(result.score)}<small>/100</small></h1><p>{result.correct} respuestas correctas de {result.total} preguntas puntuables</p></>}{oneByOne&&<h1>{review[0]?.selected===review[0]?.correct?'¡Correcto!':'Revisa la respuesta'}</h1>}{shown.length?shown.map((q:any,n:number)=><article className="card review result-question" key={q.id}><b>{n+1}. {q.prompt}</b>{q.probableAnswerError?<p className="official-multiple-answer-note">El PDF oficial indica varias respuestas correctas: {(q.officialAnswerCandidates||[]).join(', ')}. Esta pregunta podría contener un error y no se puntúa.</p>:<><p>Tu respuesta: {q.selected?`${q.selected}: ${q.options?.[q.selected]||''}`:'Sin responder'}</p><p>Correcta: {q.correct?`${q.correct}: ${q.options?.[q.correct]||''}`:'Pendiente de revisión'}</p></>}{source==='REVIEW_BLOCK'?<div className="review-row-actions"><button className="outline" onClick={()=>void markMastered(q.id)}>Ya me la sé</button><button className="text-button" onClick={()=>void toggleReview(q.id)}>Quitar del bloque</button></div>:<button className="outline" onClick={()=>void toggleReview(q.id)}>{reviewIds.has(q.id)?'Quitar del bloque de repaso':'Añadir a bloque de repaso'}</button>}</article>):<p className="empty">No hay preguntas erróneas en esta ronda. {'¡'}Buen trabajo!</p>}{error&&<div className="error-inline" role="alert">{error}</div>}<div className="result-actions">{oneByOne&&<button className="primary" disabled={saving} onClick={()=>void anotherQuestion()}>{saving?'Cargando…':'Otra pregunta'}</button>}<button className="outline" onClick={()=>navigate(source==='REVIEW_BLOCK'?'/review-block':'/')}>Terminar</button></div></div>;
+    return <div className="content result"><div className="eyebrow">{oneByOne?'CORRECCIÓN INSTANTÁNEA':mode==='OFFICIAL'?'REVISIÓN DEL EXAMEN':'RESULTADO DE LA RONDA'}</div>{!oneByOne&&<><h1>{Math.round(result.score)}<small>/100</small></h1><p>{result.correct} respuestas correctas de {result.total} preguntas puntuables</p></>}{oneByOne&&<h1>{review[0]?.selected===review[0]?.correct?'¡Correcto!':'Revisa la respuesta'}</h1>}{shown.length?shown.map((q:any,n:number)=>{const options=Object.entries(q.options||{}) as [string,unknown][],correctAnswers=q.probableAnswerError?(q.officialAnswerCandidates||[]):q.correct?[q.correct]:[];return <article className="card review result-question" key={q.id}><b>{n+1}. {q.prompt}</b>{q.probableAnswerError&&<p className="official-multiple-answer-note">El PDF oficial indica varias respuestas correctas: {(q.officialAnswerCandidates||[]).join(', ')}. Esta pregunta podría contener un error y no se puntúa.</p>}<div className="result-options" aria-label="Opciones de respuesta">{options.map(([key,value])=>{const isCorrect=correctAnswers.includes(key),isWrong=q.selected===key&&!isCorrect;return <div key={key} className={`result-option${isCorrect?' result-option-correct':''}${isWrong?' result-option-incorrect':''}`}><b>{key}</b><span>{String(value)}</span>{isWrong&&<small>Tu respuesta</small>}{isCorrect&&<small>{q.probableAnswerError?'Respuesta oficial':'Respuesta correcta'}</small>}</div>})}</div>{!q.probableAnswerError&&!q.selected&&<p>Sin responder</p>}{source==='REVIEW_BLOCK'?<div className="review-row-actions"><button className="outline" onClick={()=>void markMastered(q.id)}>Ya me la sé</button><button className="text-button" onClick={()=>void toggleReview(q.id)}>Quitar del bloque</button></div>:<button className="outline" onClick={()=>void toggleReview(q.id)}>{reviewIds.has(q.id)?'Quitar del bloque de repaso':'Añadir a bloque de repaso'}</button>}</article>}):<p className="empty">No hay preguntas erróneas en esta ronda. {'¡'}Buen trabajo!</p>}{error&&<div className="error-inline" role="alert">{error}</div>}<div className="result-actions">{oneByOne&&<button className="primary" disabled={saving} onClick={()=>void anotherQuestion()}>{saving?'Cargando…':'Otra pregunta'}</button>}<button className="outline" onClick={()=>navigate(source==='REVIEW_BLOCK'?'/review-block':'/')}>Terminar</button></div></div>;
   }
   const question=questions[index];
   if(!question)return <div className="content"><h2>No hay preguntas disponibles todavía.</h2></div>;
