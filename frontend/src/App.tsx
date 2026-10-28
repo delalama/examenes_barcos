@@ -57,6 +57,7 @@ function Home({user,setUser,exams,api,navigate}:any){
   const [mode,setMode]=useState<'ONE_BY_ONE'|'ROUND'>('ONE_BY_ONE');
   const [license,setLicense]=useState(user.preferences?.licenses?.[0]||'');
   const [questionCount,setQuestionCount]=useState(10);
+  const [withImage,setWithImage]=useState(false);
   const [island,setIsland]=useState('');
   const [year,setYear]=useState('');
   const [searched,setSearched]=useState(false);
@@ -96,9 +97,9 @@ function Home({user,setUser,exams,api,navigate}:any){
     catch(e:any){alert(e.message||'No se pudo guardar la preferencia')}
     finally{setSavingPreference(false)}
   }
-  async function startPractice(kind:'ONE_BY_ONE'|'ROUND',count:number){
-    const data=await api('/attempts',{method:'POST',body:JSON.stringify({kind,license,questionCount:count})});
-    sessionStorage.setItem('practiceKind',kind);sessionStorage.setItem('practiceLicense',license);sessionStorage.setItem('practiceSource','RANDOM');
+  async function startPractice(kind:'ONE_BY_ONE'|'ROUND',count:number,imageOnly=false){
+    const data=await api('/attempts',{method:'POST',body:JSON.stringify({kind,license,questionCount:count,withImage:imageOnly})});
+    sessionStorage.setItem('practiceKind',kind);sessionStorage.setItem('practiceLicense',license);sessionStorage.setItem('practiceSource','RANDOM');sessionStorage.setItem('practiceWithImage',String(imageOnly));
     sessionStorage.setItem('questions',JSON.stringify(data.questions));navigate(`/attempt/${data.attemptId}`);
   }
   async function startExam(exam:Exam){
@@ -111,7 +112,7 @@ function Home({user,setUser,exams,api,navigate}:any){
     <div className="welcome"><div><div className="eyebrow">PANEL DE ESTUDIO</div><h1>Hola, {user.name.split(' ')[0]}</h1><p>¿Qué te apetece repasar hoy?</p></div><div className="round" aria-hidden="true">⚓</div></div>
     <section className="practice-config card">
       <div className="practice-summary"><div className="eyebrow">MODO PRÁCTICA RÁPIDA</div><h2>Un poco cada día<br/>te acerca al título.</h2><p>Practica una pregunta cada vez o completa una ronda y revisa tus fallos.</p></div>
-      <div className="practice-config-controls"><div className="eyebrow">CONFIGURACIÓN RÁPIDA</div><h3>¿Cómo quieres practicar?</h3><div className="practice-fields"><label>Modo<select value={mode} onChange={e=>setMode(e.target.value as 'ONE_BY_ONE'|'ROUND')}><option value="ONE_BY_ONE">Una a una · corrección instantánea</option><option value="ROUND">Ronda · resultado al final</option></select></label><label>Titulación<select value={license} onChange={e=>setLicense(e.target.value)}>{['PNB','PER','PY','CY'].map(value=><option key={value}>{value}</option>)}</select></label>{mode==='ROUND'&&<label>Número de preguntas<select value={questionCount} onChange={e=>setQuestionCount(Number(e.target.value))}>{[5,10,20,40].map(value=><option key={value} value={value}>{value}</option>)}</select></label>}</div><button className="primary" onClick={()=>void startPractice(mode,mode==='ONE_BY_ONE'?1:questionCount)}>{mode==='ONE_BY_ONE'?'Empezar una a una':`Empezar ronda de ${questionCount}`}</button></div>
+      <div className="practice-config-controls"><div className="eyebrow">CONFIGURACIÓN RÁPIDA</div><h3>¿Cómo quieres practicar?</h3><div className="practice-fields"><label>Modo<select value={mode} onChange={e=>setMode(e.target.value as 'ONE_BY_ONE'|'ROUND')}><option value="ONE_BY_ONE">Una a una · corrección instantánea</option><option value="ROUND">Ronda · resultado al final</option></select></label><label>Titulación<select value={license} onChange={e=>setLicense(e.target.value)}>{['PNB','PER','PY','CY'].map(value=><option key={value}>{value}</option>)}</select></label>{mode==='ROUND'&&<label>Número de preguntas<select value={questionCount} onChange={e=>setQuestionCount(Number(e.target.value))}>{[5,10,20,40].map(value=><option key={value} value={value}>{value}</option>)}</select></label>}</div><label className="practice-image-filter"><input type="checkbox" checked={withImage} onChange={e=>setWithImage(e.target.checked)}/><span>Practicar solo preguntas con imagen</span></label><button className="primary" onClick={()=>void startPractice(mode,mode==='ONE_BY_ONE'?1:questionCount,withImage)}>{mode==='ONE_BY_ONE'?'Empezar una a una':`Empezar ronda de ${questionCount}`}</button></div>
     </section>
     <Link className="review-block-link card" to="/review-block"><span><b>Bloque de repaso</b><small>Administra las preguntas difíciles y mide tu progreso.</small></span><strong>Ver bloque</strong></Link>
     <div className="section-title"><div><div className="eyebrow">TU PREPARACIÓN</div><h2>Buscar exámenes oficiales</h2></div><span>{searched?`${filteredExams.length} resultados`:`${exams.length} exámenes disponibles`}</span></div>
@@ -177,7 +178,7 @@ function AttemptInner({id,api,token,navigate}:any){
   async function choose(key:string){const next={...answers,[question.id]:key};setAnswers(next);try{if(mode==='ONE_BY_ONE')await finish(next);else await save(next)}catch(e:any){setError(e.message||'No se pudo guardar la respuesta')}}
   async function toggleReview(questionId:string){try{if(reviewIds.has(questionId)){await api(`/review-block/${questionId}`,{method:'DELETE'});setReviewIds(current=>{const n=new Set(current);n.delete(questionId);return n})}else{await api(`/review-block/${questionId}`,{method:'POST'});setReviewIds(current=>new Set(current).add(questionId))}}catch(e:any){setError(e.message||'No se pudo actualizar el bloque de repaso')}}
   async function markMastered(questionId:string){try{await api(`/review-block/${questionId}`,{method:'PATCH',body:JSON.stringify({mastered:true})});setReviewIds(current=>{const n=new Set(current);n.delete(questionId);return n})}catch(e:any){setError(e.message||'No se pudo marcar como aprendida')}}
-  async function anotherQuestion(){setSaving(true);setError('');try{const data=await api('/attempts',{method:'POST',body:JSON.stringify({kind:'ONE_BY_ONE',license,questionCount:1,reviewBlockOnly:source==='REVIEW_BLOCK'})});sessionStorage.setItem('questions',JSON.stringify(data.questions));navigate(`/attempt/${data.attemptId}`)}catch(e:any){setError(e.message||'No hay más preguntas disponibles')}finally{setSaving(false)}}
+  async function anotherQuestion(){setSaving(true);setError('');try{const data=await api('/attempts',{method:'POST',body:JSON.stringify({kind:'ONE_BY_ONE',license,questionCount:1,reviewBlockOnly:source==='REVIEW_BLOCK',withImage:sessionStorage.getItem('practiceWithImage')==='true'})});sessionStorage.setItem('questions',JSON.stringify(data.questions));navigate(`/attempt/${data.attemptId}`)}catch(e:any){setError(e.message||'No hay más preguntas disponibles')}finally{setSaving(false)}}
   if(result && mode!=='ONE_BY_ONE'){
     const review=result.review||[];
     const shown=mode==='ROUND'||mode==='REVIEW_BLOCK'?review.filter((q:any)=>q.probableAnswerError||!q.selected||q.selected!==q.correct):review;

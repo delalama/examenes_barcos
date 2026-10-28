@@ -37,7 +37,7 @@ app.get("/api/exams",auth,async(req,res)=>{const exams=await db.exam.findMany({w
 app.get("/api/exams/:id",auth,async(req,res)=>{const e=await db.exam.findFirst({where:{id:req.params.id,status:"PUBLISHED"},select:{id:true,title:true,license:true,island:true,year:true,session:true,model:true}});e?res.json(e):res.status(404).json({error:"Examen no encontrado"})});
 app.post("/api/attempts",auth,async(req:any,res)=>{
  try {
-  const v=z.object({examId:z.string().optional(),license:z.enum(["PNB","PER","PY","CY"]).optional(),kind:z.enum(["OFFICIAL","RANDOM","ONE_BY_ONE","ROUND","REVIEW_BLOCK"]).default("OFFICIAL"),questionCount:z.number().int().min(1).max(100).default(10),reviewBlockOnly:z.boolean().default(false)}).parse(req.body);
+  const v=z.object({examId:z.string().optional(),license:z.enum(["PNB","PER","PY","CY"]).optional(),kind:z.enum(["OFFICIAL","RANDOM","ONE_BY_ONE","ROUND","REVIEW_BLOCK"]).default("OFFICIAL"),questionCount:z.number().int().min(1).max(100).default(10),reviewBlockOnly:z.boolean().default(false),withImage:z.boolean().default(false)}).parse(req.body);
   const eligible={OR:[{status:"VALIDATED" as const},{answerSource:"OFFICIAL_PDF_MULTIPLE"}]};
   let examId:string|undefined=v.examId, ids:string[]=[];
   if(v.examId){const exam=await db.exam.findFirst({where:{id:v.examId,status:"PUBLISHED"},include:{questions:{where:eligible,select:{id:true}}}});if(!exam)return res.status(404).json({error:"Examen no encontrado"});ids=exam.questions.map(q=>q.id)}
@@ -48,11 +48,11 @@ app.post("/api/attempts",auth,async(req:any,res)=>{
   } else if(v.kind==="RANDOM"||v.kind==="ONE_BY_ONE"||v.kind==="ROUND"){
    const count=v.kind==="ONE_BY_ONE"?1:v.questionCount;
    const rows=v.license
-    ?await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`
-    :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`;
+    ?await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" AND (${v.withImage}=false OR (q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL)) ORDER BY RANDOM() LIMIT ${count}`
+    :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" AND (${v.withImage}=false OR (q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL)) ORDER BY RANDOM() LIMIT ${count}`;
    ids=rows.map(row=>row.id);
   } else return res.status(400).json({error:"Selecciona un examen, pr?ctica aleatoria o bloque de repaso"});
-  if(!ids.length)return res.status(409).json({error:"No hay preguntas disponibles para esta selecci?n"});
+  if(!ids.length)return res.status(409).json({error:v.withImage?"No hay preguntas con imagen disponibles para esta titulaci?n":"No hay preguntas disponibles para esta selecci?n"});
   const attempt=await db.attempt.create({data:{userId:req.user.id,examId,kind:v.kind,questionIds:ids}});
   const found=await db.question.findMany({where:{id:{in:ids}},select:{id:true,number:true,prompt:true,options:true,imagePath:true,answerSource:true,warnings:true}});
   const byId=new Map(found.map(question=>[question.id,question]));
