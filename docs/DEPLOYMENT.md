@@ -3,24 +3,25 @@
 ## Local
 Configura `.env`, luego `docker compose up --build` y aplica `npm run db:migrate`.
 
-## Render
+## Render + Supabase
 
-The root `render.yaml` defines the API, the static frontend, and a PostgreSQL database in Frankfurt. Connect the GitHub repository to Render and create a Blueprint from this file.
+The root `render.yaml` creates only the API and static frontend on Render. It does not create a Render Postgres database. During Blueprint setup, enter `DATABASE_URL` from Supabase, plus the public service URLs:
 
-During setup, provide the public URLs for the two services:
-
+- `DATABASE_URL`: Supabase Postgres connection string. For the long-running Render API, use Supabase's **Session pooler** connection string (port 5432), copied from the Supabase Connect dialog. Do not use the transaction pooler (port 6543) for this Prisma server.
 - `VITE_API_URL`: `https://<api-host>/api`
 - `FRONTEND_ORIGIN`: `https://<frontend-host>`
 
-The API starts with `NODE_ENV=production`, generates `JWT_SECRET`, and runs `prisma migrate deploy` when it starts. Create the first administrator in the API service shell:
+Create the Supabase project in an EU region, then restore `DB_INIT_STATE/nautical-init.dump` with `DB_INIT_STATE/db-init-state.ps1 -Action Restore`. Use Supabase's direct database connection for the restore when your local network supports IPv6; otherwise use its Session pooler connection. The dump includes local user accounts, attempt history, and question image bytes.
+
+The API runs `prisma migrate deploy` on startup. Render serves the static frontend for free; its free API service sleeps after 15 minutes without traffic and may take about a minute to wake. Supabase Free currently includes 500 MB per database and may pause a project after seven days with too little activity. These free tiers are suitable for trying the deployment, with those availability limits.
+
+Create the first administrator only if no admin account was restored:
 
 ```powershell
 npm run admin --workspace backend -- --email admin@example.com --password "<12-or-more-characters>"
 ```
 
-`DB_INIT_STATE` is a local-only backup and is excluded from Git. To seed the Render database, restore `DB_INIT_STATE/nautical-init.dump` using the local restore script and the database external connection URL. The restore replaces matching database objects and includes local accounts and attempt history.
-
-Question images are stored as PostgreSQL `BYTEA` data and included in the database dump. Before exporting the snapshot, run `npm run db:import-question-images --workspace backend` to copy local question image files into PostgreSQL. Render does not need a persistent disk. The OCR review page is enabled in local builds and disabled in the Render frontend; keep PDFs and OCR staging files local for preparing future exams.
+`DB_INIT_STATE` is local-only and excluded from Git. Question images are stored in PostgreSQL; PDFs and OCR staging files stay local and are not needed by the deployed practice app. The OCR review page and API routes are disabled in Render.
 
 ## GitHub Pages
 Compila `VITE_BASE=/repo/ VITE_API_URL=https://api.example npm run build --workspace frontend`, publica `frontend/dist`. HashRouter admite refresco de rutas. Nunca incluyas secretos en `VITE_`.
