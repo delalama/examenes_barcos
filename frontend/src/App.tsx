@@ -18,8 +18,10 @@ export default function App() {
   const navigate=useNavigate();
   const api=useCallback(async(path:string,init:RequestInit={})=>{
     const response=await fetch(API+path,{...init,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{ }),...init.headers}});
-    const data=await response.json();
-    if(!response.ok)throw Error(data.error||"Error de conexión");
+    const body=await response.text();
+    let data:any={};
+    try{data=body?JSON.parse(body):{}}catch{data={error:body.startsWith("<")?`El servidor respondi? con HTTP ${response.status}.`:body||`Error HTTP ${response.status}.`}}
+    if(!response.ok)throw Error(data.error||`Error HTTP ${response.status}.`);
     return data;
   },[token]);
 

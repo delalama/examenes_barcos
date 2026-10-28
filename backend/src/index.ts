@@ -17,7 +17,7 @@ const app=express(), db=new PrismaClient(), port=Number(process.env.PORT||4000),
 const storageRoot=resolve(process.env.STORAGE_ROOT||"../storage"), importerOutRoot=resolve(process.env.IMPORT_OUT_ROOT||"../importer/out");
 const stagingDir=resolve(process.env.STAGING_DIR||join(importerOutRoot,"bulk-analysis/documents")), correctionsFile=resolve(process.env.CORRECTIONS_FILE||join(importerOutRoot,"bulk-analysis/review-corrections.json")), pdfRoot=resolve(process.env.PDF_ROOT||"../exams/pdfs");
 app.use(cors({origin:process.env.FRONTEND_ORIGIN?.split(",")||true})); app.use(express.json({limit:"1mb"}));
-const authLimit=rateLimit({windowMs:900000,limit:10,standardHeaders:true,legacyHeaders:false});
+const authLimit=rateLimit({windowMs:900000,limit:10,standardHeaders:true,legacyHeaders:false,handler:(_req,res)=>res.status(429).json({error:"Demasiados intentos de acceso desde esta conexión. Espera 15 minutos y vuelve a intentarlo."})});
 app.get("/api/health",(_req,res)=>res.json({ok:true}));
 function auth(req:any,res:any,next:any){try{const token=req.headers.authorization?.replace(/^Bearer /,"");req.user=jwt.verify(token,secret);next()}catch{return res.status(401).json({error:"Autenticación requerida"})}}
 function admin(req:any,res:any,next:any){if(req.user?.role!=="ADMIN")return res.status(403).json({error:"Permiso insuficiente"});next()}
