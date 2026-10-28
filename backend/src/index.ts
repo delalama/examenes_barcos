@@ -73,6 +73,19 @@ app.post("/api/attempts/:id/finish",auth,async(req:any,res)=>{
 app.get("/api/progress/me",auth,async(req:any,res)=>{const attempts=await db.attempt.findMany({where:{userId:req.user.id,status:"FINISHED"},select:{id:true,kind:true,score:true,finishedAt:true}});res.json({attempts,completed:attempts.length,average:attempts.length?attempts.reduce((s,a)=>s+(a.score||0),0)/attempts.length:0})});
 app.get("/api/admin/review-issues",auth,admin,async(_req,res)=>res.json(await db.question.findMany({where:{status:"PENDING_REVIEW"},include:{exam:true},take:100})));
 app.patch("/api/admin/questions/:id",auth,admin,async(req,res)=>{const v=z.object({prompt:z.string().optional(),answer:z.string().nullable().optional(),status:z.enum(["VALIDATED","PENDING_REVIEW","REJECTED"]).optional()}).parse(req.body);res.json(await db.question.update({where:{id:req.params.id},data:v}))});
+app.get("/api/admin/users",auth,admin,async(_req,res)=>{
+ const users=await db.user.findMany({orderBy:{createdAt:"desc"},select:{id:true,email:true,name:true,role:true,active:true,createdAt:true}});
+ res.json({users});
+});
+app.post("/api/admin/users",auth,admin,async(req,res)=>{
+ const parsed=z.object({name:z.string().trim().min(1).max(100),email:z.string().trim().email().transform((value)=>value.toLowerCase()),password:z.string().min(10).max(128),role:z.enum(["STUDENT","ADMIN"]).default("STUDENT")}).safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Revisa nombre, correo, contraseña (mínimo 10 caracteres) y rol."});
+ const {name,email,password,role}=parsed.data;
+ try {
+  const user=await db.user.create({data:{name,email,role,active:true,passwordHash:await bcrypt.hash(password,12)},select:{id:true,email:true,name:true,role:true,active:true,createdAt:true}});
+  res.status(201).json({user});
+ }catch(error:any){if(error.code==="P2002")return res.status(409).json({error:"Ya existe un usuario con ese correo."});throw error}
+});
 
 type StagedQuestion = { number:number; prompt:string; options:Record<string,string>; answer:string|null; answerSource:string|null; officialAnswerCandidates?:string[]; probableAnswerError?:boolean; confidence:number; startPage:number|null; endPage:number|null; rawText:string|null; warnings:string[]; status?:"PENDING_REVIEW"|"VALIDATED"|"REJECTED"; validationMethod?:string|null; imagePath?:string; imageReviewStatus?:string };
 type Correction = { prompt?:string; options?:Record<string,string>; answer?:string|null; status?:"PENDING_REVIEW"|"VALIDATED"|"REJECTED"; reviewerNote?:string; updatedAt:string; updatedBy:string; imagePath?:string; imageReviewStatus?:"PENDING_REVIEW"|"ATTACHED"|"NOT_REQUIRED" };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import AdminReview from "./AdminReview";
 import ReviewBlock from "./ReviewBlock";
+import AdminUsers from "./AdminUsers";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 const adminOcrEnabled = import.meta.env.VITE_ADMIN_OCR_ENABLED !== "false";
@@ -38,7 +39,7 @@ export default function App() {
   async function toggleTheme(){const next=theme==="DARK"?"LIGHT":"DARK";setTheme(next);try{const preferences=await api("/users/me/preferences",{method:"PATCH",body:JSON.stringify({theme:next})});setUser((current:any)=>current?{...current,preferences}:current)}catch(e:any){setTheme(theme);setError(e.message||"No se pudo guardar el tema")}}
 
   return <main>
-    <header><Link to="/" className="brand">⚓ PRÁCTICA <span>EXÁMENES</span></Link>{user&&<nav><Link to="/">Inicio</Link><Link to="/review-block">Bloque de repaso</Link><Link to="/progress">Mi progreso</Link><Link to="/settings">Opciones</Link><button type="button" className="theme-toggle" onClick={()=>void toggleTheme()} aria-label={theme==="DARK"?"Activar tema claro":"Activar tema oscuro"}>{theme==="DARK"?"☀":"☾"}<span>{theme==="DARK"?"Claro":"Oscuro"}</span></button>{user.role==="ADMIN"&&<Link to="/admin/revision-ocr">Admin · OCR</Link>}<button className="ghost" onClick={logout}>Salir</button></nav>}</header>
+    <header><Link to="/" className="brand">⚓ PRÁCTICA <span>EXÁMENES</span></Link>{user&&<nav><Link to="/">Inicio</Link><Link to="/review-block">Bloque de repaso</Link><Link to="/progress">Mi progreso</Link><Link to="/settings">Opciones</Link><button type="button" className="theme-toggle" onClick={()=>void toggleTheme()} aria-label={theme==="DARK"?"Activar tema claro":"Activar tema oscuro"}>{theme==="DARK"?"☀":"☾"}<span>{theme==="DARK"?"Claro":"Oscuro"}</span></button>{user.role==="ADMIN"&&<Link to="/admin/revision-ocr">Admin · OCR</Link>}{user.role==="ADMIN"&&<Link to="/admin/users">Usuarios</Link>}<button className="ghost" onClick={logout}>Salir</button></nav>}</header>
     {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>×</button></div>}
     {!user?<section className="hero"><div><div className="eyebrow">FORMACIÓN NÁUTICA · ILLES BALEARS</div><h1>Tu próximo título<br/><em>empieza aquí.</em></h1><p>Practica con exámenes oficiales PNB, PER, PY y CY. A tu ritmo, desde cualquier lugar.</p><div className="chips">{["PNB","PER","PY","CY"].map((license)=><span key={license}>{license}</span>)}</div></div><form className="card login" onSubmit={login}><h2>Bienvenido</h2><p>Accede para continuar practicando.</p><label>Correo electrónico<input name="email" type="email" required autoComplete="email"/></label><label>Contraseña<input name="password" type="password" required autoComplete="current-password"/></label><button className="primary">Iniciar sesión →</button></form></section>:<Routes>
       <Route path="/" element={<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
@@ -46,6 +47,7 @@ export default function App() {
       <Route path="/progress" element={<Progress api={api}/>}/>
       <Route path="/attempt/:id" element={<Attempt api={api} token={token}/>}/>
       <Route path="/review-block" element={<ReviewBlock api={api} navigate={navigate}/>}/>
+      <Route path="/admin/users" element={user.role==="ADMIN"?<AdminUsers api={api}/>:<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
       <Route path="/admin/revision-ocr" element={user.role==="ADMIN"&&adminOcrEnabled?<AdminReview api={api} token={token}/>:<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
       <Route path="*" element={<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
     </Routes>}
