@@ -1,6 +1,7 @@
 services:
   - type: web
     name: nautical-exams-api
+    plan: free
     runtime: docker
     region: frankfurt
     dockerfilePath: ./backend/Dockerfile
