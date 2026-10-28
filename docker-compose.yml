@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nautical
+      POSTGRES_PASSWORD: nautical
+      POSTGRES_DB: nautical
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nautical:nautical@db:5432/nautical?schema=public
+    ports: ["4000:4000"]
+    depends_on: [db]
+    volumes: ["./storage:/app/storage"]
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports: ["8080:80"]
+    depends_on: [api]
+volumes:
+  pgdata:

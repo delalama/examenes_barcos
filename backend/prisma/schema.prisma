@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+enum Role {
+  STUDENT
+  ADMIN
+}
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+enum QuestionStatus {
+  VALIDATED
+  PENDING_REVIEW
+  REJECTED
+}
+enum AttemptStatus {
+  IN_PROGRESS
+  FINISHED
+}
+enum ImportRunStatus {
+  DISCOVERED
+  EXTRACTED
+  PENDING_REVIEW
+  COMPLETED
+  FAILED
+  DUPLICATE
+}
+model SourceDocument {
+  id String @id @default(cuid())
+  sha256 String @unique
+  originalName String
+  sourcePath String
+  sizeBytes Int
+  pageCount Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  runs ImportRun[]
+  exams Exam[]
+}
+model ImportRun {
+  id String @id @default(cuid())
+  sourceDocumentId String
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  parserVersion String
+  status ImportRunStatus @default(DISCOVERED)
+  extractedAt DateTime?
+  completedAt DateTime?
+  error String?
+  warnings Json?
+  createdAt DateTime @default(now())
+  exams Exam[]
+  @@index([status, createdAt])
+}
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String
+  name String
+  role Role @default(STUDENT)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  preferences Preference?
+  attempts Attempt[]
+  devices Device[]
+  reviewBlockItems ReviewBlockItem[]
+}
+model Preference {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenses String[]
+  islands String[]
+  updatedAt DateTime @updatedAt
+}
+model Device {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceKey String
+  createdAt DateTime @default(now())
+  @@unique([userId, deviceKey])
+}
+model Exam {
+  id String @id @default(cuid())
+  title String
+  license String
+  island String?
+  year Int?
+  session String?
+  model String?
+  status ExamStatus @default(DRAFT)
+  sourcePdf String?
+  sourceDocumentId String?
+  sourceDocument SourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  importRunId String?
+  importRun ImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+  questions Question[]
+  attempts Attempt[]
+  createdAt DateTime @default(now())
+}
+model Question {
+  id String @id @default(cuid())
+  examId String
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  number Int
+  prompt String
+  options Json
+  answer String?
+  status QuestionStatus @default(PENDING_REVIEW)
+  confidence Float @default(0)
+  answerSource String?
+  startPage Int?
+  endPage Int?
+  imagePath String?
+  warnings String[]
+  rawText String?
+  sourceBoxes Json?
+  reviewBlockItems ReviewBlockItem[]
+  @@index([examId, status])
+}
+model ReviewBlockItem {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  masteredAt DateTime?
+  @@unique([userId, questionId])
+  @@index([userId, masteredAt])
+}
+model Attempt {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId String?
+  exam Exam? @relation(fields: [examId], references: [id])
+  kind String
+  status AttemptStatus @default(IN_PROGRESS)
+  answers Json @default("{}")
+  questionIds Json @default("[]")
+  score Float?
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+}

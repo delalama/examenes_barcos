@@ -1,0 +1,81 @@
+openapi: 3.1.0
+info:
+  title: Práctica Exámenes Náuticos API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        '200': { description: Servicio disponible }
+  /auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: Token y perfil }
+        '401': { description: Credenciales incorrectas }
+  /auth/me:
+    get:
+      responses:
+        '200': { description: Usuario actual }
+  /users/me/preferences:
+    get:
+      responses:
+        '200': { description: Preferencias del usuario }
+    patch:
+      responses:
+        '200': { description: Preferencias actualizadas }
+  /exams:
+    get:
+      responses:
+        '200': { description: Catálogo de exámenes publicados }
+  /attempts:
+    post:
+      responses:
+        '201': { description: Intento y preguntas sin soluciones }
+  /attempts/{id}/answers:
+    patch:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Respuestas guardadas }
+  /attempts/{id}/finish:
+    post:
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Nota y revisión de respuestas }
+  /progress/me:
+    get:
+      responses:
+        '200': { description: Progreso del usuario actual }
+  /admin/review-issues:
+    get:
+      responses:
+        '200': { description: Preguntas pendientes, solo admin }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
