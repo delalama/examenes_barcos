@@ -8,3 +8,47 @@
 
 .option.option-correct{border-color:#21894b;background:#eaf7ee;color:#205b35}.option.option-correct>b{background:#21894b;color:white}.option.option-incorrect{border-color:#c9424d;background:#fff0f0;color:#8f2830}.option.option-incorrect>b{background:#c9424d;color:white}.instant-feedback{display:flex;flex-direction:column;gap:5px;margin:16px 0;padding:12px 14px;border-radius:7px;font-size:13px}.instant-correct{background:#eaf7ee;border:1px solid #abd8b8;color:#205b35}.instant-incorrect{background:#fff0f0;border:1px solid #e5b3b6;color:#8f2830}.instant-feedback b{font-size:15px}.instant-feedback span{line-height:1.5}
 .exam-search{display:flex;align-items:end;gap:14px;padding:20px;margin-bottom:18px}.exam-search label,.settings-card label{display:flex;flex-direction:column;gap:7px;flex:1;color:#678085;font-size:11px;font-weight:600}.exam-search select,.settings-card select{height:42px;padding:0 11px;border:1px solid #dfe8e5;border-radius:6px;background:#fff;color:#31545a;font:inherit}.exam-search .primary{height:42px;white-space:nowrap}.search-hint{padding:14px 4px}.interest-card{max-width:680px;margin:20px auto;padding:32px}.interest-card h1,.interest-card h2{margin:12px 0;color:#143f4a;font:600 27px 'Playfair Display'}.interest-card p,.settings-card p{color:#72858a;line-height:1.7;font-size:13px}.interest-options{display:flex;gap:12px;margin-top:22px}.interest-options button{min-width:78px;font-weight:700}.onboarding-content{min-height:65vh;display:grid;place-items:center}.settings-page>h1{font:600 40px 'Playfair Display';color:#103c49}.settings-card{max-width:600px;padding:28px}.settings-card h2{font:600 23px 'Playfair Display';color:#143f4a;margin:0}.settings-card label{margin:22px 0}.settings-card .primary{margin-right:12px}.settings-saved{color:#21877c;font-size:12px}@media(max-width:650px){.exam-search{align-items:stretch;flex-direction:column}.exam-search .primary{width:100%}.interest-options{flex-wrap:wrap}}
+
+/* Responsive home, quick practice and exam search */
+main{width:100%;overflow-x:clip}
+.content{width:100%;min-width:0}
+.practice-config{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);align-items:center;gap:32px;margin:18px 0 14px;padding:28px 32px;min-width:0}
+.practice-summary,.practice-config-controls{min-width:0}
+.practice-summary h2{margin:12px 0;font:600 30px/1.25 'Playfair Display';color:#143f4a}
+.practice-summary p{max-width:420px;margin:0;color:#72858a;font-size:13px;line-height:1.7}
+.practice-config-controls h3{margin:8px 0 14px;font:600 22px 'Playfair Display';color:#143f4a}
+.practice-fields{min-width:0}
+.practice-fields label{flex:1 1 150px;min-width:0}
+.practice-fields select{width:100%;min-width:0}
+.exam-search{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:14px;width:100%;max-width:100%;min-width:0;padding:20px;margin-bottom:18px}
+.exam-search label{min-width:0}
+.exam-search select{width:100%;min-width:0}
+.exam-search .primary{width:auto;min-width:135px;white-space:nowrap}
+.exam-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));min-width:0}
+.exam{min-width:0;overflow:hidden}
+.exam h3,.exam p{overflow-wrap:anywhere;word-break:normal}
+.exam .outline{min-width:0}
+.section-title{gap:12px;flex-wrap:wrap}
+@media(max-width:760px){
+  header{height:auto;min-height:70px;padding:12px 0;gap:10px;flex-wrap:wrap}
+  nav{gap:8px 12px;flex-wrap:wrap;justify-content:flex-end}
+  nav a{font-size:12px}
+  .practice-config{grid-template-columns:minmax(0,1fr);gap:20px;padding:24px}
+  .practice-summary h2{font-size:27px}
+  .exam-search{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .exam-search .primary{width:100%;grid-column:1/-1}
+  .exam-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:480px){
+  main{padding:0 4%}
+  .content{margin:30px auto 56px}
+  .welcome h1{font-size:32px}
+  .practice-config{padding:20px}
+  .practice-fields{flex-direction:column}
+  .practice-fields label{width:100%}
+  .exam-search{grid-template-columns:minmax(0,1fr)}
+  .exam-search .primary{grid-column:auto}
+  .exam{padding:18px}
+  .section-title{align-items:flex-start}
+  footer{gap:12px;flex-wrap:wrap}
+}
