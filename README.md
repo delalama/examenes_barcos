@@ -1,8 +1,5 @@
 # Práctica Exámenes PNB/PER/PY/CY
 
-- Proyecto: [webs](https://github.com/delalama/webs)
-- Aplicación: [nautical-exams-web.onrender.com](https://nautical-exams-web.onrender.com/)
-
 Monorepo con React/Vite, API Express/TypeScript, PostgreSQL/Prisma e importador Python independiente.
 
 ## Inicio local
