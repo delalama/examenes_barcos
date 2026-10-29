@@ -15,6 +15,9 @@ export default function AdminUsers({ api }: { api: (path: string, init?: Request
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"STUDENT" | "ADMIN">("STUDENT");
+  const [passwordUser, setPasswordUser] = useState<AdminUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +61,29 @@ export default function AdminUsers({ api }: { api: (path: string, init?: Request
     }
   }
 
+  async function changePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordUser) return;
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/admin/users/${passwordUser.id}/password`, { method: "PATCH", body: JSON.stringify({ password: newPassword }) });
+      setNotice(`Contraseña actualizada para ${passwordUser.email}.`);
+      setPasswordUser(null);
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e: any) {
+      setError(e.message || "No se pudo cambiar la contraseña.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return <div className="content admin-users-page">
     <div className="eyebrow">ADMINISTRACIÓN</div>
     <h1>Usuarios</h1>
@@ -81,6 +107,12 @@ export default function AdminUsers({ api }: { api: (path: string, init?: Request
       <div><b>{user.name}</b><span>{user.email}</span></div>
       <span className={`admin-user-role ${user.role === "ADMIN" ? "admin" : "student"}`}>{user.role === "ADMIN" ? "Administrador" : "Alumno"}</span>
       <small>{user.active ? "Activo" : "Desactivado"} · {new Date(user.createdAt).toLocaleDateString("es-ES")}</small>
+      <button className="outline admin-password-toggle" type="button" onClick={() => { setPasswordUser(passwordUser?.id === user.id ? null : user); setNewPassword(""); setConfirmPassword(""); setError(""); setNotice(""); }}>Cambiar contraseña</button>
+      {passwordUser?.id === user.id && <form className="admin-password-form" onSubmit={changePassword}>
+        <label>Nueva contraseña<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={10} maxLength={128} required autoComplete="new-password" /><small>Mínimo 10 caracteres.</small></label>
+        <label>Repetir contraseña<input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={10} maxLength={128} required autoComplete="new-password" /></label>
+        <div><button className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar contraseña"}</button><button className="text-button" type="button" onClick={() => setPasswordUser(null)}>Cancelar</button></div>
+      </form>}
     </article>)}</div> : <p className="empty">Todavía no hay usuarios.</p>}
   </div>;
 }

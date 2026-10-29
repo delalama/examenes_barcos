@@ -15,6 +15,9 @@ export default function App() {
   const [theme,setTheme]=useState<"LIGHT"|"DARK">(localStorage.getItem("theme")==="DARK"?"DARK":"LIGHT");
   const [exams,setExams]=useState<Exam[]>([]);
   const [error,setError]=useState("");
+  const [loginLoading,setLoginLoading]=useState(false);
+  const [loadingStage,setLoadingStage]=useState(0);
+  const loadingStages=["Comprobando contraseña","Cargando exámenes","Cargando perfil y preferencias"];
   const navigate=useNavigate();
   const api=useCallback(async(path:string,init:RequestInit={})=>{
     const response=await fetch(API+path,{...init,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{ }),...init.headers}});
@@ -29,13 +32,15 @@ export default function App() {
 
   useEffect(()=>{
     if(!token)return;
-    api("/auth/me").then((data:any)=>{setUser(data);if(data.preferences?.theme==="LIGHT"||data.preferences?.theme==="DARK")setTheme(data.preferences.theme)}).catch(()=>{localStorage.removeItem("token");setToken("")});
-    api("/exams").then(setExams).catch((e)=>setError(e.message));
+    let active=true;
+    const timer=window.setInterval(()=>setLoadingStage((stage)=>stage===1?2:1),2200);
+    Promise.all([api("/auth/me"),api("/exams")]).then(([data,examData]:any[])=>{if(!active)return;setUser(data);setExams(examData);if(data.preferences?.theme==="LIGHT"||data.preferences?.theme==="DARK")setTheme(data.preferences.theme)}).catch((e)=>{if(!active)return;localStorage.removeItem("token");setToken("");setError(e.message)}).finally(()=>window.clearInterval(timer));
+    return ()=>{active=false;window.clearInterval(timer)};
   },[api,token]);
 
   async function login(event:React.FormEvent<HTMLFormElement>){
-    event.preventDefault();setError("");const form=new FormData(event.currentTarget);
-    try{const data=await api("/auth/login",{method:"POST",body:JSON.stringify({email:form.get("email"),password:form.get("password")})});localStorage.setItem("token",data.token);setToken(data.token);setUser(null)}catch(e:any){setError(e.message)}
+    event.preventDefault();setError("");setLoginLoading(true);setLoadingStage(0);const form=new FormData(event.currentTarget);
+    try{const data=await api("/auth/login",{method:"POST",body:JSON.stringify({email:form.get("email"),password:form.get("password")})});setLoadingStage(1);localStorage.setItem("token",data.token);setToken(data.token);setUser(null)}catch(e:any){setError(e.message)}finally{setLoginLoading(false)}
   }
   function logout(){localStorage.removeItem("token");setToken("");setUser(null)}
   async function toggleTheme(){const next=theme==="DARK"?"LIGHT":"DARK";setTheme(next);try{const preferences=await api("/users/me/preferences",{method:"PATCH",body:JSON.stringify({theme:next})});setUser((current:any)=>current?{...current,preferences}:current)}catch(e:any){setTheme(theme);setError(e.message||"No se pudo guardar el tema")}}
@@ -43,7 +48,7 @@ export default function App() {
   return <main>
     <header><Link to="/" className="brand">⚓ PRÁCTICA <span>EXÁMENES</span></Link>{user&&<nav><Link to="/">Inicio</Link><Link to="/review-block">Bloque de repaso</Link><Link to="/progress">Mi progreso</Link><Link to="/settings">Opciones</Link><button type="button" className="theme-toggle" onClick={()=>void toggleTheme()} aria-label={theme==="DARK"?"Activar tema claro":"Activar tema oscuro"}>{theme==="DARK"?"☀":"☾"}<span>{theme==="DARK"?"Claro":"Oscuro"}</span></button>{user.role==="ADMIN"&&<Link to="/admin/revision-ocr">Admin · OCR</Link>}{user.role==="ADMIN"&&<Link to="/admin/users">Usuarios</Link>}<button className="ghost" onClick={logout}>Salir</button></nav>}</header>
     {error&&<div role="alert" className="error">{error}<button onClick={()=>setError("")}>×</button></div>}
-    {!user?<section className="hero"><div><div className="eyebrow">FORMACIÓN NÁUTICA · ILLES BALEARS</div><h1>Tu próximo título<br/><em>empieza aquí.</em></h1><p>Practica con exámenes oficiales PNB, PER, PY y CY. A tu ritmo, desde cualquier lugar.</p><div className="chips">{["PNB","PER","PY","CY"].map((license)=><span key={license}>{license}</span>)}</div></div><form className="card login" onSubmit={login}><h2>Bienvenido</h2><p>Accede para continuar practicando.</p><label>Correo electrónico<input name="email" type="email" required autoComplete="email"/></label><label>Contraseña<input name="password" type="password" required autoComplete="current-password"/></label><button className="primary">Iniciar sesión →</button></form></section>:<Routes>
+    {!user?<section className="hero"><div><div className="eyebrow">FORMACIÓN NÁUTICA · ILLES BALEARS</div><h1>Tu próximo título<br/><em>empieza aquí.</em></h1><p>Practica con exámenes oficiales PNB, PER, PY y CY. A tu ritmo, desde cualquier lugar.</p><div className="chips">{["PNB","PER","PY","CY"].map((license)=><span key={license}>{license}</span>)}</div></div>{token||loginLoading?<section className="card login voyage" role="status" aria-live="polite"><span className="voyage-icon" aria-hidden="true">⛵</span><h2>Preparando la salida</h2><p>Estamos conectando con el servidor. Puede tardar unos segundos.</p><div className="voyage-route"><span className="voyage-progress" style={{left:`${loadingStage*50}%`}}>⛵</span>{[0,1,2].map((stop)=><i key={stop} className={stop<=loadingStage?"reached":""}/>)}</div><div className="voyage-stops">{loadingStages.map((stage,index)=><span key={stage} className={index===loadingStage?"active":""}>{stage}</span>)}</div></section>:<form className="card login" onSubmit={login}><h2>Bienvenido</h2><p>Accede para continuar practicando.</p><label>Correo electrónico<input name="email" type="email" required autoComplete="email" disabled={loginLoading}/></label><label>Contraseña<input name="password" type="password" required autoComplete="current-password" disabled={loginLoading}/></label><button className="primary" disabled={loginLoading}>{loginLoading?"Comprobando acceso…":"Iniciar sesión →"}</button></form>}</section>:<Routes>
       <Route path="/" element={<Home user={user} setUser={setUser} exams={exams} api={api} navigate={navigate}/>}/>
       <Route path="/settings" element={<Settings user={user} setUser={setUser} api={api}/>}/>
       <Route path="/progress" element={<Progress api={api}/>}/>

@@ -47,10 +47,18 @@ app.post("/api/attempts",auth,async(req:any,res)=>{
    if(!ids.length)return res.status(409).json({error:"No tienes preguntas activas en tu bloque de repaso"});
   } else if(v.kind==="RANDOM"||v.kind==="ONE_BY_ONE"||v.kind==="ROUND"){
    const count=v.kind==="ONE_BY_ONE"?1:v.questionCount;
-   const rows=v.license
-    ?await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" AND (${v.withImage}=false OR (q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL)) ORDER BY RANDOM() LIMIT ${count}`
-    :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" AND (${v.withImage}=false OR (q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL)) ORDER BY RANDOM() LIMIT ${count}`;
-   ids=rows.map(row=>row.id);
+   const rows=v.withImage
+    ?v.license
+     ?await db.$queryRaw<Array<{id:string}>>`WITH pool AS (SELECT q."id", ROW_NUMBER() OVER (PARTITION BY regexp_replace(lower(q."prompt"), '\s+', ' ', 'g'), q."options"::text ORDER BY RANDOM()) AS duplicate_rank FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" AND q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL) SELECT p."id" FROM pool p WHERE p.duplicate_rank=1 ORDER BY RANDOM()`
+     :await db.$queryRaw<Array<{id:string}>>`WITH pool AS (SELECT q."id", ROW_NUMBER() OVER (PARTITION BY regexp_replace(lower(q."prompt"), '\s+', ' ', 'g'), q."options"::text ORDER BY RANDOM()) AS duplicate_rank FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" AND q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL) SELECT p."id" FROM pool p WHERE p.duplicate_rank=1 ORDER BY RANDOM()`
+    :v.license
+     ?await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`
+     :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`;
+   if(v.withImage){
+    const recentAttempts=await db.attempt.findMany({where:{userId:req.user.id},orderBy:{startedAt:"desc"},take:5,select:{questionIds:true}});
+    const recentlyAsked=new Set(recentAttempts.flatMap(attempt=>Array.isArray(attempt.questionIds)?attempt.questionIds.filter((id):id is string=>typeof id==="string"):[]));
+    ids=[...rows.filter(row=>!recentlyAsked.has(row.id)),...rows.filter(row=>recentlyAsked.has(row.id))].slice(0,count).map(row=>row.id);
+   } else ids=rows.slice(0,count).map(row=>row.id);
   } else return res.status(400).json({error:"Selecciona un examen, pr?ctica aleatoria o bloque de repaso"});
   if(!ids.length)return res.status(409).json({error:v.withImage?"No hay preguntas con imagen disponibles para esta titulaci?n":"No hay preguntas disponibles para esta selecci?n"});
   const attempt=await db.attempt.create({data:{userId:req.user.id,examId,kind:v.kind,questionIds:ids}});
@@ -85,6 +93,14 @@ app.post("/api/admin/users",auth,admin,async(req,res)=>{
   const user=await db.user.create({data:{name,email,role,active:true,passwordHash:await bcrypt.hash(password,12)},select:{id:true,email:true,name:true,role:true,active:true,createdAt:true}});
   res.status(201).json({user});
  }catch(error:any){if(error.code==="P2002")return res.status(409).json({error:"Ya existe un usuario con ese correo."});throw error}
+});
+app.patch("/api/admin/users/:id/password",auth,admin,async(req,res)=>{
+ const parsed=z.object({password:z.string().min(10).max(128)}).safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"La contraseña debe tener entre 10 y 128 caracteres."});
+ const user=await db.user.findUnique({where:{id:req.params.id},select:{id:true}});
+ if(!user)return res.status(404).json({error:"No se encontró el usuario."});
+ await db.user.update({where:{id:user.id},data:{passwordHash:await bcrypt.hash(parsed.data.password,12)}});
+ res.json({ok:true});
 });
 
 type StagedQuestion = { number:number; prompt:string; options:Record<string,string>; answer:string|null; answerSource:string|null; officialAnswerCandidates?:string[]; probableAnswerError?:boolean; confidence:number; startPage:number|null; endPage:number|null; rawText:string|null; warnings:string[]; status?:"PENDING_REVIEW"|"VALIDATED"|"REJECTED"; validationMethod?:string|null; imagePath?:string; imageReviewStatus?:string };
