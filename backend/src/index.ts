@@ -37,7 +37,7 @@ app.get("/api/exams",auth,async(req,res)=>{const exams=await db.exam.findMany({w
 app.get("/api/exams/:id",auth,async(req,res)=>{const e=await db.exam.findFirst({where:{id:req.params.id,status:"PUBLISHED"},select:{id:true,title:true,license:true,island:true,year:true,session:true,model:true}});e?res.json(e):res.status(404).json({error:"Examen no encontrado"})});
 app.post("/api/attempts",auth,async(req:any,res)=>{
  try {
-  const v=z.object({examId:z.string().optional(),license:z.enum(["PNB","PER","PY","CY"]).optional(),kind:z.enum(["OFFICIAL","RANDOM","ONE_BY_ONE","ROUND","REVIEW_BLOCK"]).default("OFFICIAL"),questionCount:z.number().int().min(1).max(100).default(10),reviewBlockOnly:z.boolean().default(false),withImage:z.boolean().default(false)}).parse(req.body);
+  const v=z.object({examId:z.string().optional(),license:z.enum(["PNB","PER","PY","CY"]).optional(),kind:z.enum(["OFFICIAL","RANDOM","ONE_BY_ONE","ROUND","REVIEW_BLOCK"]).default("OFFICIAL"),questionCount:z.number().int().min(1).max(100).default(10),reviewBlockOnly:z.boolean().default(false),withImage:z.boolean().default(false),contentType:z.enum(["QUESTIONS","CHARTS","ALL"]).optional()}).parse(req.body);
   const eligible={OR:[{status:"VALIDATED" as const},{answerSource:"OFFICIAL_PDF_MULTIPLE"}]};
   let examId:string|undefined=v.examId, ids:string[]=[];
   if(v.examId){const exam=await db.exam.findFirst({where:{id:v.examId,status:"PUBLISHED"},include:{questions:{where:eligible,select:{id:true}}}});if(!exam)return res.status(404).json({error:"Examen no encontrado"});ids=exam.questions.map(q=>q.id)}
@@ -47,20 +47,21 @@ app.post("/api/attempts",auth,async(req:any,res)=>{
    if(!ids.length)return res.status(409).json({error:"No tienes preguntas activas en tu bloque de repaso"});
   } else if(v.kind==="RANDOM"||v.kind==="ONE_BY_ONE"||v.kind==="ROUND"){
    const count=v.kind==="ONE_BY_ONE"?1:v.questionCount;
-   const rows=v.withImage
+   const chartOnly=v.contentType==="CHARTS";
+   const questionsOnly=v.contentType==="QUESTIONS";
+   const imageFilter=v.withImage||chartOnly;
+   const rows=imageFilter
     ?v.license
      ?await db.$queryRaw<Array<{id:string}>>`WITH pool AS (SELECT q."id", ROW_NUMBER() OVER (PARTITION BY regexp_replace(lower(q."prompt"), '\s+', ' ', 'g'), q."options"::text ORDER BY RANDOM()) AS duplicate_rank FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" AND q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL) SELECT p."id" FROM pool p WHERE p.duplicate_rank=1 ORDER BY RANDOM()`
      :await db.$queryRaw<Array<{id:string}>>`WITH pool AS (SELECT q."id", ROW_NUMBER() OVER (PARTITION BY regexp_replace(lower(q."prompt"), '\s+', ' ', 'g'), q."options"::text ORDER BY RANDOM()) AS duplicate_rank FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" AND q."imagePath" IS NOT NULL AND q."imageData" IS NOT NULL) SELECT p."id" FROM pool p WHERE p.duplicate_rank=1 ORDER BY RANDOM()`
-    :v.license
-     ?await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND e."license"=${v.license} AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`
-     :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND q."status"='VALIDATED'::"QuestionStatus" ORDER BY RANDOM() LIMIT ${count}`;
-   if(v.withImage){
+     :await db.$queryRaw<Array<{id:string}>>`SELECT q."id" FROM "Question" q JOIN "Exam" e ON e."id"=q."examId" WHERE e."status"='PUBLISHED'::"ExamStatus" AND (${v.license||null}::text IS NULL OR e."license"=${v.license||null}) AND q."status"='VALIDATED'::"QuestionStatus" AND (${questionsOnly}::boolean = false OR (q."imagePath" IS NULL AND q."imageData" IS NULL)) ORDER BY RANDOM() LIMIT ${count}`;
+   if(imageFilter){
     const recentAttempts=await db.attempt.findMany({where:{userId:req.user.id},orderBy:{startedAt:"desc"},take:5,select:{questionIds:true}});
     const recentlyAsked=new Set(recentAttempts.flatMap(attempt=>Array.isArray(attempt.questionIds)?attempt.questionIds.filter((id):id is string=>typeof id==="string"):[]));
     ids=[...rows.filter(row=>!recentlyAsked.has(row.id)),...rows.filter(row=>recentlyAsked.has(row.id))].slice(0,count).map(row=>row.id);
    } else ids=rows.slice(0,count).map(row=>row.id);
   } else return res.status(400).json({error:"Selecciona un examen, pr?ctica aleatoria o bloque de repaso"});
-  if(!ids.length)return res.status(409).json({error:v.withImage?"No hay preguntas con imagen disponibles para esta titulaci?n":"No hay preguntas disponibles para esta selecci?n"});
+  if(!ids.length)return res.status(409).json({error:v.withImage||v.contentType==="CHARTS"?"No hay preguntas con carta disponibles para esta titulaci?n":"No hay preguntas disponibles para esta selecci?n"});
   const attempt=await db.attempt.create({data:{userId:req.user.id,examId,kind:v.kind,questionIds:ids}});
   const found=await db.question.findMany({where:{id:{in:ids}},select:{id:true,number:true,prompt:true,options:true,imagePath:true,answerSource:true,warnings:true}});
   const byId=new Map(found.map(question=>[question.id,question]));
@@ -75,10 +76,12 @@ app.post("/api/attempts/:id/finish",auth,async(req:any,res)=>{
  const answers=a.answers as Record<string,string>;
  const qs=await db.question.findMany({where:{id:{in:a.questionIds as string[]},OR:[{status:"VALIDATED"},{answerSource:"OFFICIAL_PDF_MULTIPLE"}]},select:{id:true,answer:true,prompt:true,options:true,answerSource:true,warnings:true}});
  const {correct,score,total}=grade(qs,answers);
+ const failedIds=qs.filter(q=>!isProbableAnswerError(q.warnings)&&answers[q.id]!==q.answer).map(q=>q.id);
+ if(failedIds.length)await Promise.all(failedIds.map(questionId=>db.reviewBlockItem.upsert({where:{userId_questionId:{userId:req.user.id,questionId}},create:{userId:req.user.id,questionId},update:{masteredAt:null}})));
  const done=await db.attempt.update({where:{id:a.id},data:{status:"FINISHED",score,finishedAt:new Date()}});
  res.json({attempt:done,score,correct,total,review:qs.map(q=>({id:q.id,prompt:q.prompt,options:q.options,selected:answers[q.id]||null,correct:q.answer,probableAnswerError:isProbableAnswerError(q.warnings),officialAnswerCandidates:officialAnswerCandidates(q.answerSource,q.warnings)}))});
 });
-app.get("/api/progress/me",auth,async(req:any,res)=>{const attempts=await db.attempt.findMany({where:{userId:req.user.id,status:"FINISHED"},select:{id:true,kind:true,score:true,finishedAt:true}});res.json({attempts,completed:attempts.length,average:attempts.length?attempts.reduce((s,a)=>s+(a.score||0),0)/attempts.length:0})});
+app.get("/api/progress/me",auth,async(req:any,res)=>{const attempts=await db.attempt.findMany({where:{userId:req.user.id,status:"FINISHED"},orderBy:{finishedAt:"desc"},take:100,select:{id:true,kind:true,score:true,finishedAt:true,questionIds:true,answers:true}});const failedIds=[...new Set(attempts.flatMap(a=>{const ids=Array.isArray(a.questionIds)?a.questionIds.filter((id):id is string=>typeof id==="string"):[];const answers=a.answers as Record<string,string>;return ids}))];const questions=failedIds.length?await db.question.findMany({where:{id:{in:failedIds},status:"VALIDATED"},select:{id:true,number:true,prompt:true,options:true,answer:true,warnings:true,exam:{select:{title:true,license:true,year:true}}}}):[];const failed=questions.filter(q=>!isProbableAnswerError(q.warnings)&&attempts.some(a=>{const answers=a.answers as Record<string,string>;return (Array.isArray(a.questionIds)?a.questionIds:[]).includes(q.id)&&answers[q.id]!==q.answer})).map(q=>{const lastAttempt=attempts.find(a=>{const answers=a.answers as Record<string,string>;return (Array.isArray(a.questionIds)?a.questionIds:[]).includes(q.id)&&answers[q.id]!==q.answer})?.finishedAt??null;return {...q,lastAttempt}});res.json({attempts:attempts.map(({questionIds,answers,...a})=>a),completed:attempts.filter(a=>a.kind==="OFFICIAL").length,average:attempts.length?attempts.reduce((s,a)=>s+(a.score||0),0)/attempts.length:0,failed})});
 app.get("/api/admin/review-issues",auth,admin,async(_req,res)=>res.json(await db.question.findMany({where:{status:"PENDING_REVIEW"},include:{exam:true},take:100})));
 app.patch("/api/admin/questions/:id",auth,admin,async(req,res)=>{const v=z.object({prompt:z.string().optional(),answer:z.string().nullable().optional(),status:z.enum(["VALIDATED","PENDING_REVIEW","REJECTED"]).optional()}).parse(req.body);res.json(await db.question.update({where:{id:req.params.id},data:v}))});
 app.get("/api/admin/users",auth,admin,async(_req,res)=>{
